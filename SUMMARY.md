@@ -2,17 +2,31 @@
 
 This project explores how to expose a REST backend as MCP tools using WildFly's MCP subsystem, progressively moving from application-level code to a fully declarative, server-managed approach.
 
-The REST backend (`todo-backend.war`) is a pre-existing JPA-backed TODO application that is never modified. All stages build MCP tooling on top of it.
+There is a wide spectrum of approaches to expose existing applications as MCP servers (summarized in [Exposing MCP from Legacy Java: Architecture Patterns That Actually Scale](https://www.the-main-thread.com/p/exposing-mcp-legacy-java-jakarta-ee-architecture?publication_id=4194688&utm_campaign=email-post-title&r=av42p&utm_medium=email)).
 
-## Stage 1: Setup
+Most of them are beyond the scope of what is achievable __within__ WildFly.
+This experiments focuses on answering the question: **But What If the Legacy App Exposes MCP Directly?**
 
-A WildFly application is configured with the `mcp-server` subsystem layer and deployed alongside the existing `todo-backend.war`. The todo backend exposes a standard REST API at `http://localhost:8080/todo-backend/` with CRUD operations for todo items.
+To play around this question, I'm starting from an existing deployment from the [todo-backend quickstart](https://github.com/wildfly/quickstart/tree/main/todo-backend).
+The todo backend exposes a standard REST API at the `/todo-backend/` endpoints with CRUD operations for todo items.
 
-**Key files:**
-- `todo-backend.war` — pre-existing REST backend (untouched)
-- `pom.xml` — WildFly Maven plugin with `mcp-server`, `jaxrs`, `jpa` layers
+## Stage 0: Modify the todo-backend codebase to use @Tool annotation
 
-## Stage 2: @Tool Annotations with HTTP Calls
+The first approach would be to modify the todo-backend and add directly the code to expose it with @Tool annotations.
+This requires changes to the existing application and would be similar to the [weather](https://github.com/ehsavoie/wildfly-weather/blob/main/src/main/java/org/acme/Weather.java) example.
+
+### Summary
+
+* (+) The MCP Tool API is not constrained by the existing HTTP API
+* (+) It's not bound to the deployment HTTP API (can directly use CDI / EJB)
+* (-) It requires changes to the existing code
+* (-) It might still have to go through the HTTP layer if there is some validation/business logic in that layer
+* (-) It is bound to the existing deployment security constraints (which might not be a good thing if the user want 
+  to have different security schemes for AI agents vs software calls)
+
+## Stage 1: @Tool Annotations with HTTP Calls
+
+A WildFly application is configured with the `mcp-server` subsystem layer and deployed alongside the existing `todo-backend.war`.
 
 MCP tools are implemented as Java methods annotated with `@Tool` and `@ToolArg` from the `wildfly-mcp-api`. Each method manually constructs HTTP requests using `java.net.http.HttpClient` to call the todo-backend REST API.
 
@@ -21,9 +35,16 @@ Four tools are exposed: `listTodos`, `addTodo`, `completeTodo`, `deleteTodo`.
 **Key files:**
 - `src/main/java/org/wildfly/mcp/demo/TodoTools.java` — annotated methods with inline HTTP logic
 
-**Commits:** `014e6de`, `f6ac0aa`, `8d14bb1`
+Commit: `8d14bb1a480dccedd97f4761ea9f6ddf66258f68`
 
-## Stage 3: Declarative XML + Application-side Executor
+### Summary:
+
+* (+) No modification to the existing todo-backend.war
+* (+) The Tool API is not constrained by the HTTP API (it can aggregate requests, transform payload)
+* (+) It is another deployment that can have different security schemes from the existing application
+* (-) It requires new code with boilerplate code (HTTP, security)
+
+## Stage 2: Declarative XML + Application-side Executor
 
 The hardcoded HTTP logic is extracted into a declarative XML file (`mcp-tools.xml`) that defines each tool's name, description, arguments, HTTP method, URL path, and request body template with `${arg}` placeholders.
 
@@ -34,11 +55,19 @@ A generic `HttpToolExecutor` parses the XML at startup and executes HTTP calls b
 - `src/main/java/org/wildfly/mcp/demo/HttpToolExecutor.java` — XML parser + HTTP executor
 - `src/main/java/org/wildfly/mcp/demo/TodoTools.java` — simplified delegates
 
-**Commit:** `60361a8`
+Commit `60361a819dac0e2bdefdd68b910ad883498ed3d4`
 
-## Stage 4: MCP Subsystem Integration (Planned)
+### Summary
 
-The final stage moves the declarative approach into WildFly's MCP subsystem itself. The subsystem would parse `mcp-tools.xml` at deployment time, programmatically register tools (bypassing `@Tool` annotations entirely), and execute HTTP calls directly.
+* (+) No modification to the existing todo-backend.war
+* (+) The new code is generic and can apply to any existing deployment
+* (+) It is another deployment that can have different security schemes from the existing application
+* (+) Templating could simplify the mapping between the MCP I/O and the HTTP I/O (to some extent)
+* (-) The Tool API is still constrained by the HTTP API (there is a 1:1 mapping between MCP Tool and HTTP request)
+
+## Stage 3: MCP Subsystem Integration
+
+The next stage moves the declarative approach into WildFly's MCP subsystem itself. The subsystem would parse `mcp-tools.xml` at deployment time, programmatically register tools (bypassing `@Tool` annotations entirely), and execute HTTP calls directly.
 
 This eliminates all Java tool classes from the application. The deployment contains only the XML descriptor and the REST backend — no `TodoTools.java`, no `HttpToolExecutor.java`, no `wildfly-mcp-api` dependency.
 
@@ -48,6 +77,11 @@ This eliminates all Java tool classes from the application. The deployment conta
 - HTTP execution path in `ToolMessageHandler` for XML-defined tools
 - CDI/MethodHandle pipeline skipped for tools with no Java class
 
-**Plan:** `plan-declarative-mcp-subsystem.md`
+The `[./plan-declarative-mcp-subsystem.md](plan-declarative-mcp-subsystem.md)` describes what this approach would require.
 
-**Commits:** `33c89e9`, `7d4ebeb`
+### Summary
+
+* (+) No modification to the existing todo-backend.war
+* (+) No new Java code required, the mcp-tools.xml would be deployed directly to WildFly
+* (-) The Tool API is constrained by the HTTP API (there is a 1:1 mapping between MCP Tool and HTTP request)
+* (-) Templating might be too simplistic and may require some Java runtime hooks to handle the I/O mapping between MCP and the HTTP API)
