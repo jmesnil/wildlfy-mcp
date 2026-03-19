@@ -1,0 +1,26 @@
+<mcp-tools base-url="http://localhost:8080/todo-backend">
+
+  <tool name="listTodos" description="List all todo items. Returns a JSON array of objects with fields: id (number), title (string), completed (boolean).">
+    <http method="GET" path="/"/>
+  </tool>
+
+  <tool name="addTodo" description="Add a new todo item to the list.">
+    <arg name="title" description="The title of the todo item" required="true" type="string"/>
+    <http method="POST" path="/" content-type="application/json">
+      <body>{"title": "${title}"}</body>
+    </http>
+  </tool>
+
+  <tool name="completeTodo" description="Mark a todo item as completed.">
+    <arg name="id" description="The ID of the todo item to complete" required="true" type="long"/>
+    <http method="PATCH" path="/${id}" content-type="application/json">
+      <body>{"completed": true}</body>
+    </http>
+  </tool>
+
+  <tool name="deleteTodo" description="Delete a todo item from the list.">
+    <arg name="id" description="The ID of the todo item to delete" required="true" type="long"/>
+    <http method="DELETE" path="/${id}"/>
+  </tool>
+
+</mcp-tools>
