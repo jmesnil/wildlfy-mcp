@@ -42,7 +42,7 @@ public class TodoTools {
         }
     }
 
-    @Tool(description = "List all todo items.")
+    @Tool(description = "List all todo items. Returns a JSON array of objects with fields: id (number), title (string), completed (boolean).")
     public String listTodos() {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(BASE_URL))
@@ -52,11 +52,21 @@ public class TodoTools {
             HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
             JsonArray todos = parseArray(response.body());
             if (todos.isEmpty()) {
-                return "No todos found.";
+                return "[]";
             }
-            return todos.stream()
-                    .map(v -> formatTodo(v.asJsonObject()))
-                    .collect(Collectors.joining("\n"));
+            JsonArray result = Json.createArrayBuilder(
+                    todos.stream()
+                            .map(v -> {
+                                JsonObject obj = v.asJsonObject();
+                                return Json.createObjectBuilder()
+                                        .add("id", obj.getJsonNumber("id").longValue())
+                                        .add("title", obj.getString("title"))
+                                        .add("completed", obj.getBoolean("completed", false))
+                                        .build();
+                            })
+                            .collect(Collectors.toList())
+            ).build();
+            return result.toString();
         } catch (IOException | InterruptedException e) {
             return "Failed to list todos: " + e.getMessage();
         }
