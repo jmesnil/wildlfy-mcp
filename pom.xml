@@ -105,8 +105,13 @@
                         <layer>ee-core-profile-server</layer>
                         <layer>jaxrs</layer>
                         <layer>mcp-server</layer>
+                        <layer>h2-default-datasource</layer>
+                        <layer>jpa</layer>
                     </layers>
                     <name>ROOT.war</name>
+                    <extra-server-content-dirs>
+                        <extra-content>./src/extra-content</extra-content>
+                    </extra-server-content-dirs>
                     <packagingScripts>
                         <packaging-script>
                             <scripts>
